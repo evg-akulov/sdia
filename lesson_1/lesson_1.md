@@ -32,18 +32,117 @@ downstream по отношению к Payments Context
 
 ### Context Map
 
-![context_map.png](img/context_map.png)
+```plantuml
+@startuml
+skinparam linetype ortho
+
+skinparam rectangle {
+BackgroundColor white
+BorderColor black
+RoundCorner 15
+}
+
+rectangle "Customer Context" as Customer
+rectangle "Wallet Context" as Wallet
+rectangle "Payments Context" as Payments
+rectangle "Antifraud/Scoring Context" as Scoring
+rectangle "Core Banking Context" as Core
+rectangle "Notification Context" as Notification
+
+Customer    --> Payments : U / D
+Customer    --> Wallet : OHS,U / CF,D
+Payments    --> Wallet : OHS,U / CF,D
+Payments    --> Scoring : OHS,U / CF,D
+Payments    --> Core : OHS,U / CF,D
+Payments    --> Notification : U / D
+Core    --> Wallet : OHS,U / ACL,CF,D
+
+@enduml
+```
 
 # 2. C4-диаграммы
 
 ## Диаграмма C4 Context (C1)
 
-![img.png](img/c4_context.png)
+```plantuml
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+Person(person, "Person", "Клиент банка")
+
+Boundary(internal, "Payments system") {
+  Container(paymentPlatform, "Payments system", "Платёжная платформа банка")
+}
+
+System_Ext(processing, "Processing System", "Процессинговый центр")
+System_Ext(sms, "SMS Provider", "Sms-провайдер")
+
+
+Rel(person, paymentPlatform, " ")
+Rel(paymentPlatform, processing, " ")
+Rel(paymentPlatform, sms, " ")
+
+@enduml
+```
 
 ## C4 Container (C2)
 
-![img.png](img/c4_container.png)
+```plantuml
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
 
+skinparam wrapWidth 300
+
+Person(person, "Person", "Клиент банка, мобильный/веб")
+
+Boundary(internal, "Payments system") {
+Container(api_gateway, "API Gateway", "Nginx", "Распределяет нагрузку на систему")
+Container(wallet, "Wallet Service", "Spring Boot app", "Сервис счетов и остатков")
+Container(pay_gateway, "Pay Gateway Service", "Spring Boot app", "Шлюз входящих операций")
+Container(payment, "Payments Service", "Spring Boot app", "Сервис выполнения операций, оркестратор, стэйт машина")
+Container(core, "Core Banking Service", "Spring Boot app", "Сервис для работы с АБС банка")
+Container(scoring, "Anti-Fraud/Scoring Service", "Spring Boot app", "Антифрод система для онлайн проверки операций")
+Container(notification, "Notifications Service", "Spring Boot app", "Система нотификаций, отправка push, sms, email")
+
+ContainerDb(paymentDb, "Payment DB", "PostgreSQL")
+ContainerDb(walletDb, "Wallet DB", "PostgreSQL")
+ContainerDb(walletCache, "Wallet Cache", "Redis")
+SystemQueue(kafka, "Apache Kafka", "Асинхронный обмен событиями")
+ContainerDb(scoringDb, "Antifraud DB", "PostgreSQL")
+ContainerDb(notificationDb, "Notification DB", "PostgreSQL")
+
+Rel(api_gateway, wallet, "HTTP GET, запрос остатка по счетам")
+Rel(api_gateway, pay_gateway, "HTTP POST, создать платеж")
+Rel(pay_gateway, kafka, "Kafka event [PaymentInit]")
+Rel(kafka, payment, "Kafka event [PaymentInit,ScoringResult,PaymentFinish]")
+Rel(payment, wallet, "gRPC, проверка остатка счета")
+Rel(payment, kafka, "Pub events [ScoringRequest,PaymentToBalance,Notification]")
+Rel(kafka, core, "Kafka event [PaymentToBalance]")
+Rel(core, kafka, "Pub events [BalanceUpdate,PaymentFinish]")
+Rel(kafka, scoring, "Kafka event [ScoringRequest]")
+Rel(scoring, kafka, "Pub event [ScoringResult]")
+Rel(kafka, notification, "Kafka event [Notification]")
+Rel(kafka, wallet, "Kafka event [BalanceUpdate]")
+
+Rel(wallet, walletDb, "Чтение/Запись")
+Rel(wallet, walletCache, "Чтение/Запись")
+Rel(payment, paymentDb, "Чтение/Запись")
+Rel(scoring, scoringDb, "Чтение/Запись")
+Rel(notification, notificationDb, "Чтение/Запись")
+}
+
+System_Ext(abs, "ABS Bank Service", "Oracle", "Legacy")
+System_Ext(processing, "Processing System", "Процессинговый центр")
+System_Ext(sms_provider, "SMS Provider", "Sms-провайдер")
+
+Rel(person, api_gateway, "HTTP REST API, запрос остатков / отправка платежа")
+Rel(core, abs, "Записать операцию и получить остатки после проведения")
+Rel(core, processing, "Отправить операцию в ПЦ")
+Rel(notification, sms_provider, "REST/SOAP")
+
+
+@enduml
+```
 
 # 3. Коммуникации и протоколы
 
@@ -114,10 +213,7 @@ paymentId будет использоваться:
 ID пользователей и номера счетов мы также можем использовать как UUIDv7, чтобы их можно было отдавать во внешний API 
 без рисков и они были сортируемы по времени регистрации
 
-# Общая архитектурная схема 
-
-![img.png](img/arch_map.png)
-
+***
 
 Все сервисы внутри контура в большинстве случаев общаются асинхронно с помощью брокера Apache Kafka (за исключением запроса остатка по GRPC).
 Такой подход позволит изолировать микросервисы друг от друга, реализовать слабую связанность, масштабируемость и отказоустойчивость всей системы.
