@@ -354,9 +354,9 @@ Authorization: Bearer <token>
   "description": "string",
   "timestamp": "yyyyMMdd-HH:mm:ss:SSSSSS"
 }
-
+```
 Response
-
+```json
 {
   "paymentId": "UUID",
   "timestamp": "yyyyMMdd-HH:mm:ss:SSSSSS"
@@ -378,9 +378,9 @@ Authorization: Bearer <token>
   "description": "string",
   "timestamp": "yyyyMMdd-HH:mm:ss:SSSSSS"
 }
-
+```
 Response
-
+```json
 {
   "paymentId": "UUID",
   "timestamp": "yyyyMMdd-HH:mm:ss:SSSSSS"
@@ -394,8 +394,9 @@ Host: host.com
 Content-Type: application/json
 Authorization: Bearer <token>
 
+```
 Response
-
+```json
 {
     "paymentId": "UUID",
     "user_name": "string",
