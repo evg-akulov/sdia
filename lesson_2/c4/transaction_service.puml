@@ -1,0 +1,25 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+Boundary(internal, "Transaction Service") {
+Container(PaymentInitiated, "PaymentInitiated", "Layer", "Оркестрация платежа, стэйт машина")
+Container(PaymentProvider, "PaymentProvider", "Layer", "Интеграция с внешним платёжным провайдером")
+Container(PaymentEvent, "PaymentEventHandler", "Layer", "Обработка events из kafka")
+
+ContainerDb(transactionDb, "Transaction DB + Outbox", "PostgreSQL Состояние платежей, outbox-события PaymentResult")
+SystemQueue(kafka, "Apache Kafka", "Асинхронный обмен событиями Paymentinitiated u PaymentResult между сервисами")
+
+Rel(kafka, PaymentInitiated, "Kafka event [PaymentInitiated]")
+Rel(kafka, PaymentEvent, "Kafka event [ProviderCallbackReceived]")
+Rel(PaymentEvent, transactionDb, "Запись платежа и outbox-события PaymentResult")
+Rel(transactionDb, kafka, "Pub event [PaymentResult]")
+
+}
+
+System_Ext(provider, "Provider System", "Внешний провайдер")
+
+Rel(PaymentInitiated, transactionDb, "Дедупликация по paymentId")
+Rel(PaymentInitiated, PaymentProvider, "Передаем платеж в провайдер")
+Rel(PaymentProvider, provider, "HTTPS API внешний вызов")
+
+@enduml

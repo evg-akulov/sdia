@@ -1,0 +1,29 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+Boundary(internal, "Wallet Service") {
+Container(api_gateway, "API Gateway", "Nginx", "Единая точка входа для НТТР-запросов, аутентификация, маршрутизация")
+Container(walletController, "Wallet Controller", "layer", "REST Controller")
+Container(wallet, "Wallet Service", "layer", "Резервирование средств и финальное списание/компенсация")
+Container(walletBalance, "Wallet Balance", "layer", "Управление балансами кошельков")
+Container(walletEvent, "WalletEventHandler", "layer", "Обработка events из kafka")
+
+
+ContainerDb(walletDb, "Wallet DB + Outbox", "PostgreSQL Счета пользователей, платежи и outbox-события Paymentinitiated")
+ContainerDb(walletCache, "Wallet Cache", "Redis")
+SystemQueue(kafka, "Apache Kafka", "Асинхронный обмен событиями Paymentinitiated u PaymentResult между сервисами")
+
+Rel(api_gateway, walletController, "HTTP POST, создать платеж")
+Rel(walletController, wallet, "Создать платеж")
+Rel(kafka, walletEvent, "Kafka event [PaymentResult]")
+
+Rel(wallet, walletBalance, "Проверка баланса")
+Rel(walletBalance, walletDb, "Проверка баланса")
+Rel(wallet, walletDb, "Запись платежа и outbox-события Paymentinitiated")
+Rel(walletEvent, walletCache, "Дедупликация по paymentId + PaymentResultId")
+Rel(walletEvent, wallet, "Обработка PaymentResult, списание/компенсация")
+Rel(walletDb, kafka, "Pub event [PaymentInitiated]")
+Rel(wallet, walletCache, "Запись paymentId + PaymentResultId")
+}
+
+@enduml

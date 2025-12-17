@@ -1,0 +1,7 @@
+{
+  "typeEvent": "ProviderCallbackReceived",
+  "paymentId": "UUID",
+  "status": "string",
+  "description": "string",
+  "timestamp": "yyyyMMdd-HH:mm:ss:SSSSSS"
+}

@@ -3,413 +3,37 @@
 ## 1. C4 Container + Component диаграммы
 
 ### C4 Container
-```plantuml
-@startuml
-!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+[container.puml](c4/container.puml)
 
-Person(person, "Person", "Клиент банка, мобильный/веб")
-
-Boundary(internal, "Payments system") {
-Container(api_gateway, "API Gateway", "Nginx", "Единая точка входа для НТТР-запросов, аутентификация, маршрутизация")
-Container(wallet, "Wallet Service", "Spring Boot app", "Управление балансами кошельков, резервирование средств и финальное списание/компенсация.")
-Container(transaction, "Transaction Service", "Spring Boot app", "Оркестрация платежа,стэйт машина и интеграция с внешним платёжным провайдером")
-Container(callback, "Callback Service", "Spring Boot app", "Принимает callback от провайдера")
-Container(query, "CQRS Query Service", "Spring Boot app", "Сервис чтения данных")
-
-ContainerDb(transactionDb, "Transaction DB + Outbox", "PostgreSQL Состояние платежей, outbox-события PaymentResult")
-ContainerDb(walletDb, "Wallet DB + Outbox", "PostgreSQL Счета пользователей, платежи и outbox-события Paymentinitiated")
-ContainerDb(walletCache, "Wallet Cache", "Redis")
-ContainerDb(queryDb, "readingDB", "Elasticsearch")
-SystemQueue(kafka, "Apache Kafka", "Асинхронный обмен событиями Paymentinitiated u PaymentResult между сервисами")
-
-Rel(api_gateway, query, "HTTP GET, запрос истории платежей, запрос статуса платежа")
-Rel(api_gateway, wallet, "HTTP POST, создать платеж")
-Rel(api_gateway, callback, "HTTP POST, callback от провайдера")
-Rel(kafka, transaction, "Kafka event [PaymentInitiated,ProviderCallbackReceived]")
-Rel(kafka, wallet, "Kafka event [PaymentResult]")
-Rel(kafka, queryDb, "Kafka event [PaymentInitiated,PaymentResult]")
-
-Rel(wallet, walletDb, "Запись платежа и outbox-события Paymentinitiated")
-Rel(wallet, walletCache, "Чтение/Запись paymentId + PaymentResultId")
-Rel(walletDb, kafka, "Pub event [PaymentInitiated]")
-Rel(transaction, transactionDb, "Запись платежа и outbox-события PaymentResult")
-Rel(transactionDb, kafka, "Pub event [PaymentResult]")
-Rel(callback, kafka, "Pub event [ProviderCallbackReceived]")
-Rel(query, queryDb, "Чтение")
-
-}
-
-System_Ext(provider, "Provider System", "Внешний провайдер")
-
-Rel(person, api_gateway, "HTTP REST API, запрос истории платежей / отправка платежа")
-Rel(provider, api_gateway, "HTTPS Callback [Результат платежа]")
-Rel(transaction, provider, "HTTPS API внешний вызов")
-
-@enduml
-```
 ### C4 Component 
 **внутренние компоненты ключевых сервисов**
 
-Wallet Service 
-```plantuml
-@startuml
-!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+Wallet Service [wallet_service.puml](c4/wallet_service.puml)
 
-Boundary(internal, "Wallet Service") {
-Container(api_gateway, "API Gateway", "Nginx", "Единая точка входа для НТТР-запросов, аутентификация, маршрутизация")
-Container(walletController, "Wallet Controller", "layer", "REST Controller")
-Container(wallet, "Wallet Service", "layer", "Резервирование средств и финальное списание/компенсация")
-Container(walletBalance, "Wallet Balance", "layer", "Управление балансами кошельков")
-Container(walletEvent, "WalletEventHandler", "layer", "Обработка events из kafka")
+Transaction Service [transaction_service.puml](c4/transaction_service.puml)
 
+Query Service [query_service.puml](c4/query_service.puml)
 
-ContainerDb(walletDb, "Wallet DB + Outbox", "PostgreSQL Счета пользователей, платежи и outbox-события Paymentinitiated")
-ContainerDb(walletCache, "Wallet Cache", "Redis")
-SystemQueue(kafka, "Apache Kafka", "Асинхронный обмен событиями Paymentinitiated u PaymentResult между сервисами")
-
-Rel(api_gateway, walletController, "HTTP POST, создать платеж")
-Rel(walletController, wallet, "Создать платеж")
-Rel(kafka, walletEvent, "Kafka event [PaymentResult]")
-
-Rel(wallet, walletBalance, "Проверка баланса")
-Rel(walletBalance, walletDb, "Проверка баланса")
-Rel(wallet, walletDb, "Запись платежа и outbox-события Paymentinitiated")
-Rel(walletEvent, walletCache, "Дедупликация по paymentId + PaymentResultId")
-Rel(walletEvent, wallet, "Обработка PaymentResult, списание/компенсация")
-Rel(walletDb, kafka, "Pub event [PaymentInitiated]")
-Rel(wallet, walletCache, "Запись paymentId + PaymentResultId")
-}
-
-@enduml
-```
-Transaction Service
-```plantuml
-@startuml
-!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
-
-Boundary(internal, "Transaction Service") {
-Container(PaymentInitiated, "PaymentInitiated", "Layer", "Оркестрация платежа, стэйт машина")
-Container(PaymentProvider, "PaymentProvider", "Layer", "Интеграция с внешним платёжным провайдером")
-Container(PaymentEvent, "PaymentEventHandler", "Layer", "Обработка events из kafka")
-
-ContainerDb(transactionDb, "Transaction DB + Outbox", "PostgreSQL Состояние платежей, outbox-события PaymentResult")
-SystemQueue(kafka, "Apache Kafka", "Асинхронный обмен событиями Paymentinitiated u PaymentResult между сервисами")
-
-Rel(kafka, PaymentInitiated, "Kafka event [PaymentInitiated]")
-Rel(kafka, PaymentEvent, "Kafka event [ProviderCallbackReceived]")
-Rel(PaymentEvent, transactionDb, "Запись платежа и outbox-события PaymentResult")
-Rel(transactionDb, kafka, "Pub event [PaymentResult]")
-
-}
-
-System_Ext(provider, "Provider System", "Внешний провайдер")
-
-Rel(PaymentInitiated, transactionDb, "Дедупликация по paymentId")
-Rel(PaymentInitiated, PaymentProvider, "Передаем платеж в провайдер")
-Rel(PaymentProvider, provider, "HTTPS API внешний вызов")
-
-@enduml
-```
-Query Service
-```plantuml
-@startuml
-!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
-
-Person(person, "Person", "Клиент банка, мобильный/веб")
-
-Boundary(internal, "Query Service") {
-Container(api_gateway, "API Gateway", "Nginx", "Единая точка входа для НТТР-запросов, аутентификация, маршрутизация")
-Container(query, "CQRS Query Service", "Layer", "Сервис чтения данных")
-Container(CQRSEvent, "CQRS Event", "Layer", "Обработка events из kafka")
-
-ContainerDb(queryDb, "readingDB", "Elasticsearch")
-SystemQueue(kafka, "Apache Kafka", "Асинхронный обмен событиями Paymentinitiated u PaymentResult между сервисами")
-
-Rel(api_gateway, query, "HTTP GET, запрос истории платежей, запрос статуса платежа")
-Rel(kafka, CQRSEvent, "Kafka event [PaymentInitiated,PaymentResult]")
-Rel(CQRSEvent, queryDb, "Запись PaymentInitiated, обновление PaymentResult")
-
-Rel(query, queryDb, "Чтение")
-
-}
-
-Rel(person, api_gateway, "HTTP REST API, запрос истории платежей")
-
-@enduml
-```
 ## 2. Диаграммы последовательности
 Основной успешный сценарий
-```plantuml
-@startuml
+[sequence_success.puml](sequence/sequence_success.puml)
 
-actor User
-
-participant "API Gateway" as APIGW
-participant "Query Service" as Query
-participant "Query DB" as QueryDb
-participant "Wallet Service" as Wallet
-participant "Wallet DB" as WalletDb
-participant "Wallet Cache" as Redis
-participant "Kafka Broker" as KafkaWallet
-participant "Transactional DB" as TransactionalDb
-participant "Transactional Service" as Transactional
-participant "Kafka Broker" as KafkaCallback
-participant "Callback Service" as Callback
-participant "Callback DB" as CallbackDb
-participant "External Payment Provider" as ExtProvider
-
-User -> APIGW: POST (создать платёж)
-APIGW -> Wallet: Запрос на платеж (сумма, получатель)
-
-Wallet -> WalletDb: Дедупликация, если такой транзакции не было то продолжаем
-Wallet -> WalletDb: Проверить баланс, если позволяет то продолжаем
-Wallet -> WalletDb: Списать сумму в wallets (резерв средств)
-Wallet -> WalletDb: Сохранить транзакцию в wallet_transactions (status=PENDING)
-Wallet -> WalletDb: Записать событие\n"PaymentInitiated" в Outbox
-Wallet --> WalletDb: commit (локальная транзакция)
-
-Wallet -> KafkaWallet: публикует событие PaymentInitiated\n(через Outbox + polling)
-
-KafkaWallet -> Transactional: доставить событие PaymentInitiated
-Transactional -> TransactionalDb: Дедупликация по paymentId
-Transactional -> TransactionalDb: Сохранить платеж (status=NEW)
-Transactional -> ExtProvider: Вызвать API провайдера \n(списание средств)
-Transactional -> TransactionalDb: Обновить статус платежа (status=SENT)
-KafkaWallet -> Query: доставить событие PaymentInitiated
-Query -> QueryDb : Записать событие
-
-ExtProvider -> APIGW: платеж успешен (SUCCESS)
-APIGW -> Callback: платеж успешен (SUCCESS)
-
-Callback -> CallbackDb : Записать событие\n"ProviderCallbackReceived" в Outbox
-Callback -> KafkaCallback: публикует событие ProviderCallbackReceived (SUCCESS)\n(через Outbox + polling)
-KafkaCallback -> Transactional: доставить событие ProviderCallbackReceived (SUCCESS)
-
-Transactional -> TransactionalDb: Обновить статус платежа\n(SUCCESS)
-Transactional -> TransactionalDb: Записать событие \n"PaymentResult" в Outbox
-Transactional --> TransactionalDb: commit (локальная транзакция)
-
-Transactional -> KafkaWallet: публикует событие PaymentResult (SUCCESS)
-
-KafkaWallet -> Query: доставить событие PaymentResult (SUCCESS)
-Query -> QueryDb : Записать событие (SUCCESS)
-
-KafkaWallet -> Wallet: доставить событие PaymentResult (SUCCESS)\n
-Wallet -> Redis: Дедупликация по paymentId + PaymentResultId
-Wallet -> WalletDb: Подтвердить списание\n(окончательное списание)
-Wallet -> WalletDb: Обновить статус транзакции = Completed
-Wallet --> WalletDb: commit (локальная транзакция)
-Wallet -> Redis: Записать paymentId + PaymentResultId
-
-
-User -> APIGW: GET (получить данные по платёжу)
-APIGW -> Query: Запрос на получение данных по платежу
-
-@enduml
-```
 Сценарий с ошибкой
-```plantuml
-@startuml
+[sequence_error.puml](sequence/sequence_error.puml)
 
-actor User
-
-participant "API Gateway" as APIGW
-participant "Query Service" as Query
-participant "Query DB" as QueryDb
-participant "Wallet Service" as Wallet
-participant "Wallet DB" as WalletDb
-participant "Wallet Cache" as Redis
-participant "Kafka Broker" as KafkaWallet
-participant "Transactional DB" as TransactionalDb
-participant "Transactional Service" as Transactional
-participant "Kafka Broker" as KafkaCallback
-participant "Callback Service" as Callback
-participant "Callback DB" as CallbackDb
-participant "External Payment Provider" as ExtProvider
-
-User -> APIGW: POST (создать платёж)
-APIGW -> Wallet: Запрос на платеж (сумма, получатель)
-
-Wallet -> WalletDb: Дедупликация, если такой транзакции не было то продолжаем
-Wallet -> WalletDb: Проверить баланс, если позволяет то продолжаем
-Wallet -> WalletDb: Списать сумму в wallets (резерв средств)
-Wallet -> WalletDb: Сохранить транзакцию в wallet_transactions (status=PENDING)
-Wallet -> WalletDb: Записать событие\n"PaymentInitiated" в Outbox
-Wallet --> WalletDb: commit (локальная транзакция)
-
-Wallet -> KafkaWallet: публикует событие PaymentInitiated\n(через Outbox + polling)
-
-KafkaWallet -> Transactional: доставить событие PaymentInitiated
-Transactional -> TransactionalDb: Дедупликация по paymentId
-Transactional -> TransactionalDb: Сохранить платеж (status=NEW)
-Transactional -> ExtProvider: Вызвать API провайдера \n(списание средств)
-Transactional -> TransactionalDb: Обновить статус платежа (status=SENT)
-KafkaWallet -> Query: доставить событие PaymentInitiated
-Query -> QueryDb : Записать событие
-
-note over Transactional
-стэйт машина ожидает callback
-timeout = n duration
-end note
-alt Transactional received after timeout
-Transactional -> TransactionalDb: Обновить статус платежа\n(FAILED_TIMEOUT)
-Transactional -> TransactionalDb: Записать событие \n"PaymentResult" в Outbox
-Transactional --> TransactionalDb: commit (локальная транзакция)
-Transactional -> KafkaWallet: публикует событие PaymentResult (FAILED_TIMEOUT)
-end
-
-ExtProvider -> APIGW: платеж неуспешен (FAILED)
-APIGW -> Callback: платеж неуспешен (FAILED)
-
-Callback -> CallbackDb : Записать событие\n"ProviderCallbackReceived" в Outbox
-Callback -> KafkaCallback: публикует событие ProviderCallbackReceived (FAILED)\n(через Outbox + polling)
-KafkaCallback -> Transactional: доставить событие ProviderCallbackReceived (FAILED)
-
-Transactional -> TransactionalDb: Обновить статус платежа\n(FAILED)
-Transactional -> TransactionalDb: Записать событие \n"PaymentResult" в Outbox
-Transactional --> TransactionalDb: commit (локальная транзакция)
-Transactional -> KafkaWallet: публикует событие PaymentResult (FAILED)
-
-KafkaWallet -> Query: доставить событие PaymentResult (FAILED/FAILED_TIMEOUT)
-Query -> QueryDb : Записать событие (FAILED/FAILED_TIMEOUT)
-
-KafkaWallet -> Wallet: доставить событие PaymentResult (FAILED/FAILED_TIMEOUT)\n
-Wallet -> Redis: Дедупликация по paymentId + PaymentResultId
-Wallet -> WalletDb: Компенсация: вернуть\n зарезервированные средства
-Wallet -> WalletDb: Обновить статус транзакции = FAILED/FAILED_TIMEOUT
-Wallet --> WalletDb: commit (локальная транзакция)
-Wallet -> Redis: Записать paymentId + PaymentResultId
-
-
-User -> APIGW: GET (получить данные по платёжу)
-APIGW -> Query: Запрос на получение данных по платежу
-
-@enduml
-```
 Отдельная диаграмма для flow с callback-service
-```plantuml
-@startuml
+[sequence_callback.puml](sequence/sequence_callback.puml)
 
-actor User
-
-participant "API Gateway" as APIGW
-participant "Query Service" as Query
-participant "Query DB" as QueryDb
-participant "Wallet Service" as Wallet
-participant "Wallet DB" as WalletDb
-participant "Wallet Cache" as Redis
-participant "Kafka Broker" as KafkaWallet
-participant "Transactional DB" as TransactionalDb
-participant "Transactional Service" as Transactional
-participant "Kafka Broker" as KafkaCallback
-participant "Callback Service" as Callback
-participant "Callback DB" as CallbackDb
-participant "External Payment Provider" as ExtProvider
-
-ExtProvider -> APIGW: платеж успешен (SUCCESS/FAILED)
-APIGW -> Callback: платеж успешен (SUCCESS/FAILED)
-
-Callback -> CallbackDb : Записать событие\n"ProviderCallbackReceived" в Outbox
-Callback -> KafkaCallback: публикует событие ProviderCallbackReceived (SUCCESS/FAILED)\n(через Outbox + polling)
-KafkaCallback -> Transactional: доставить событие ProviderCallbackReceived (SUCCESS/FAILED)
-
-Transactional -> TransactionalDb: Обновить статус платежа\n(SUCCESS/FAILED)
-Transactional -> TransactionalDb: Записать событие \n"PaymentResult" в Outbox
-Transactional --> TransactionalDb: commit (локальная транзакция)
-
-Transactional -> KafkaWallet: публикует событие PaymentResult (SUCCESS/FAILED)
-
-KafkaWallet -> Query: доставить событие PaymentResult (SUCCESS/FAILED)
-Query -> QueryDb : Записать событие (SUCCESS/FAILED)
-
-KafkaWallet -> Wallet: доставить событие PaymentResult (SUCCESS/FAILED)\n
-Wallet -> Redis: Дедупликация по paymentId + PaymentResultId
-Wallet -> WalletDb: Подтвердить списание\n(окончательное списание) \ вернуть зарезервированные средства
-Wallet -> WalletDb: Обновить статус транзакции = Completed / FAILED
-Wallet --> WalletDb: commit (локальная транзакция)
-Wallet -> Redis: Записать paymentId + PaymentResultId
-
-User -> APIGW: GET (получить данные по платёжу)
-APIGW -> Query: Запрос на получение данных по платежу
-
-@enduml
-```
 ## 3. Описание API контрактов
 
 **Внешние API**
 
-Создание платежа
+Создание платежа [payment.md](http/payment.md)
 
-```http
-POST /api/v1/payment HTTP/1.1
-Host: host.com
-Content-Type: application/json
-Authorization: Bearer <token>
+callback API провайдера (endpoint Callback Service) [callback.md](http/callback.md)
 
-{
-  "paymentId": "UUID",
-  "wallet": "UUID",
-  "amount": 999999999.99,
-  "kind": "string",
-  "description": "string",
-  "timestamp": "yyyyMMdd-HH:mm:ss:SSSSSS"
-}
-```
-Response
-```json
-{
-  "paymentId": "UUID",
-  "timestamp": "yyyyMMdd-HH:mm:ss:SSSSSS"
-}
-```
-_paymentId - является Idempotency Key_
+Запрос статуса платежа (endpoint Query Service) [query.md](http/query.md)
 
-callback API провайдера (endpoint Callback Service)
-
-```http
-POST /api/v1/callback HTTP/1.1
-Host: host.com
-Content-Type: application/json
-Authorization: Bearer <token>
-
-{
-  "paymentId": "UUID",
-  "status": "string",
-  "description": "string",
-  "timestamp": "yyyyMMdd-HH:mm:ss:SSSSSS"
-}
-```
-Response
-```json
-{
-  "paymentId": "UUID",
-  "timestamp": "yyyyMMdd-HH:mm:ss:SSSSSS"
-}
-```
-Запрос статуса платежа (endpoint Query Service)
-
-```http
-GET /api/v1/payments/{id} HTTP/1.1
-Host: host.com
-Content-Type: application/json
-Authorization: Bearer <token>
-
-```
-Response
-```json
-{
-    "paymentId": "UUID",
-    "user_name": "string",
-    "phone": "string",
-    "wallet_number": "UUID",
-    "amount": 999999999.99,
-    "kind": "string",
-    "description": "string",
-    "status": "string",
-    "created": "yyyyMMdd-HH:mm:ss:SSSSSS",
-    "updated": "yyyyMMdd-HH:mm:ss:SSSSSS"
-}
-```
 
 ## 4. Описание сущностей (ERD-диаграмма)
 **БД Wallet Service**
@@ -440,56 +64,18 @@ Response
 
 Форматы событий: 
 
-**PaymentInitiated**
-```json
-{
-  "typeEvent": "PaymentInitiated",
-  "paymentId": "UUID",
-  "wallet": "UUID",
-  "amount": 999999999.99,
-  "kind": "string",
-  "description": "string",
-  "timestamp": "yyyyMMdd-HH:mm:ss:SSSSSS"
-}
-```
+PaymentInitiated [payment_initiated.json](events/payment_initiated.json)
 
-**PaymentResult PaymentCompleted**
-```json
-{
-  "typeEvent": "paymentCompleted",
-  "paymentId": "UUID",
-  "PaymentResultId": "UUID",
-  "status": "string",
-  "description": "string",
-  "timestamp": "yyyyMMdd-HH:mm:ss:SSSSSS"
-}
-```
+PaymentResult PaymentCompleted [payment_result_completed.json](events/payment_result_completed.json)
 
-**PaymentResult PaymentFailed**
-```json
-{
-  "typeEvent": "PaymentFailed",
-  "paymentId": "UUID",
-  "PaymentResultId": "UUID",
-  "status": "string",
-  "description": "string",
-  "timestamp": "yyyyMMdd-HH:mm:ss:SSSSSS"
-}
-```
-**ProviderCallbackReceived**
-```json
-{
-  "typeEvent": "ProviderCallbackReceived",
-  "paymentId": "UUID",
-  "status": "string",
-  "description": "string",
-  "timestamp": "yyyyMMdd-HH:mm:ss:SSSSSS"
-}
-```
+PaymentResult PaymentFailed [payment_result_failed.json](events/payment_result_failed.json)
+
+ProviderCallbackReceived [provider_callback_received.json](events/provider_callback_received.json)
 
 ## 6. Описание процесса исполнения платежа
 
 * От клиента приходит запрос по REST API в API Gateway, проходит проверку JWT токен
+* paymentId генерируется на стороне клиента
 * API Gateway вызывает Wallet Service по REST API
 * Wallet Service в первую очередь дедуплицирует, проверяет по таблице wallet_transactions, не было ли ранее транзакции с таким paymentId, 
 такие образом реализуется идемпотентность, если не было такой операции, то проверяет по таблице wallets баланс по счету, если он больше или равен сумме платежа, то продолжаем

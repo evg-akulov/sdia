@@ -1,0 +1,75 @@
+@startuml
+
+actor User
+
+participant "API Gateway" as APIGW
+participant "Query Service" as Query
+participant "Query DB" as QueryDb
+participant "Wallet Service" as Wallet
+participant "Wallet DB" as WalletDb
+participant "Wallet Cache" as Redis
+participant "Kafka Broker" as Kafka
+participant "Transactional DB" as TransactionalDb
+participant "Transactional Service" as Transactional
+participant "Callback Service" as Callback
+participant "Callback DB" as CallbackDb
+participant "External Payment Provider" as ExtProvider
+
+User -> APIGW: POST (создать платёж)
+APIGW -> Wallet: Запрос на платеж (сумма, получатель)
+
+Wallet -> WalletDb: Дедупликация, если такой транзакции не было то продолжаем
+Wallet -> WalletDb: Проверить баланс, если позволяет то продолжаем
+Wallet -> WalletDb: Списать сумму в wallets (резерв средств)
+Wallet -> WalletDb: Сохранить транзакцию в wallet_transactions (status=PENDING)
+Wallet -> WalletDb: Записать событие\n"PaymentInitiated" в Outbox
+Wallet --> WalletDb: commit (локальная транзакция)
+
+Wallet -> Kafka: публикует событие PaymentInitiated\n(через Outbox + polling)
+
+Kafka -> Transactional: доставить событие PaymentInitiated
+Transactional -> TransactionalDb: Дедупликация по paymentId
+Transactional -> TransactionalDb: Сохранить платеж (status=NEW)
+Transactional -> ExtProvider: Вызвать API провайдера \n(списание средств)
+Transactional -> TransactionalDb: Обновить статус платежа (status=SENT)
+Kafka -> Query: доставить событие PaymentInitiated
+Query -> QueryDb : Записать событие
+
+note over Transactional
+стэйт машина ожидает callback
+timeout = n duration
+end note
+alt Transactional received after timeout
+Transactional -> TransactionalDb: Обновить статус платежа\n(FAILED_TIMEOUT)
+Transactional -> TransactionalDb: Записать событие \n"PaymentResult" в Outbox
+Transactional --> TransactionalDb: commit (локальная транзакция)
+Transactional -> Kafka: публикует событие PaymentResult (FAILED_TIMEOUT)
+end
+
+ExtProvider -> APIGW: платеж неуспешен (FAILED)
+APIGW -> Callback: платеж неуспешен (FAILED)
+
+Callback -> CallbackDb : Записать событие\n"ProviderCallbackReceived" в Outbox
+Callback -> Kafka: публикует событие ProviderCallbackReceived (FAILED)\n(через Outbox + polling)
+Kafka -> Transactional: доставить событие ProviderCallbackReceived (FAILED)
+
+Transactional -> TransactionalDb: Обновить статус платежа\n(FAILED)
+Transactional -> TransactionalDb: Записать событие \n"PaymentResult" в Outbox
+Transactional --> TransactionalDb: commit (локальная транзакция)
+Transactional -> Kafka: публикует событие PaymentResult (FAILED)
+
+Kafka -> Query: доставить событие PaymentResult (FAILED/FAILED_TIMEOUT)
+Query -> QueryDb : Записать событие (FAILED/FAILED_TIMEOUT)
+
+Kafka -> Wallet: доставить событие PaymentResult (FAILED/FAILED_TIMEOUT)\n
+Wallet -> Redis: Дедупликация по paymentId + PaymentResultId
+Wallet -> WalletDb: Компенсация: вернуть\n зарезервированные средства
+Wallet -> WalletDb: Обновить статус транзакции = FAILED/FAILED_TIMEOUT
+Wallet --> WalletDb: commit (локальная транзакция)
+Wallet -> Redis: Записать paymentId + PaymentResultId
+
+
+User -> APIGW: GET (получить данные по платёжу)
+APIGW -> Query: Запрос на получение данных по платежу
+
+@enduml

@@ -1,0 +1,8 @@
+{
+  "typeEvent": "PaymentFailed",
+  "paymentId": "UUID",
+  "PaymentResultId": "UUID",
+  "status": "string",
+  "description": "string",
+  "timestamp": "yyyyMMdd-HH:mm:ss:SSSSSS"
+}

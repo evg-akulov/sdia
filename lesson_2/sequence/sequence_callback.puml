@@ -1,0 +1,44 @@
+@startuml
+
+actor User
+
+participant "API Gateway" as APIGW
+participant "Query Service" as Query
+participant "Query DB" as QueryDb
+participant "Wallet Service" as Wallet
+participant "Wallet DB" as WalletDb
+participant "Wallet Cache" as Redis
+participant "Kafka Broker" as Kafka
+participant "Transactional DB" as TransactionalDb
+participant "Transactional Service" as Transactional
+participant "Callback Service" as Callback
+participant "Callback DB" as CallbackDb
+participant "External Payment Provider" as ExtProvider
+
+ExtProvider -> APIGW: платеж успешен (SUCCESS/FAILED)
+APIGW -> Callback: платеж успешен (SUCCESS/FAILED)
+
+Callback -> CallbackDb : Записать событие\n"ProviderCallbackReceived" в Outbox
+Callback -> Kafka: публикует событие ProviderCallbackReceived (SUCCESS/FAILED)\n(через Outbox + polling)
+Kafka -> Transactional: доставить событие ProviderCallbackReceived (SUCCESS/FAILED)
+
+Transactional -> TransactionalDb: Обновить статус платежа\n(SUCCESS/FAILED)
+Transactional -> TransactionalDb: Записать событие \n"PaymentResult" в Outbox
+Transactional --> TransactionalDb: commit (локальная транзакция)
+
+Transactional -> Kafka: публикует событие PaymentResult (SUCCESS/FAILED)
+
+Kafka -> Query: доставить событие PaymentResult (SUCCESS/FAILED)
+Query -> QueryDb : Записать событие (SUCCESS/FAILED)
+
+Kafka -> Wallet: доставить событие PaymentResult (SUCCESS/FAILED)\n
+Wallet -> Redis: Дедупликация по paymentId + PaymentResultId
+Wallet -> WalletDb: Подтвердить списание\n(окончательное списание) \ вернуть зарезервированные средства
+Wallet -> WalletDb: Обновить статус транзакции = Completed / FAILED
+Wallet --> WalletDb: commit (локальная транзакция)
+Wallet -> Redis: Записать paymentId + PaymentResultId
+
+User -> APIGW: GET (получить данные по платёжу)
+APIGW -> Query: Запрос на получение данных по платежу
+
+@enduml

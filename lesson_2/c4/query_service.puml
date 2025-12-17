@@ -1,0 +1,24 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+Person(person, "Person", "Клиент банка, мобильный/веб")
+
+Boundary(internal, "Query Service") {
+Container(api_gateway, "API Gateway", "Nginx", "Единая точка входа для НТТР-запросов, аутентификация, маршрутизация")
+Container(query, "CQRS Query Service", "Layer", "Сервис чтения данных")
+Container(CQRSEvent, "CQRS Event", "Layer", "Обработка events из kafka")
+
+ContainerDb(queryDb, "readingDB", "Elasticsearch")
+SystemQueue(kafka, "Apache Kafka", "Асинхронный обмен событиями Paymentinitiated u PaymentResult между сервисами")
+
+Rel(api_gateway, query, "HTTP GET, запрос истории платежей, запрос статуса платежа")
+Rel(kafka, CQRSEvent, "Kafka event [PaymentInitiated,PaymentResult]")
+Rel(CQRSEvent, queryDb, "Запись PaymentInitiated, обновление PaymentResult")
+
+Rel(query, queryDb, "Чтение")
+
+}
+
+Rel(person, api_gateway, "HTTP REST API, запрос истории платежей")
+
+@enduml
