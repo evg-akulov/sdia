@@ -42,6 +42,7 @@ Callback -> CallbackDb : Записать событие\n"ProviderCallbackRecei
 Callback -> Kafka: публикует событие ProviderCallbackReceived (SUCCESS)\n(через Outbox + polling)
 Kafka -> Transactional: доставить событие ProviderCallbackReceived (SUCCESS)
 
+Transactional -> Kafka: Если платеж был ранее отклонен(FAILED_TIMEOUT), то отправляем на ручной разбор
 Transactional -> TransactionalDb: Обновить статус платежа\n(SUCCESS)
 Transactional -> TransactionalDb: Записать событие \n"PaymentResult" в Outbox
 Transactional --> TransactionalDb: commit (локальная транзакция)

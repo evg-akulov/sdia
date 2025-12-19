@@ -54,6 +54,13 @@ callback API провайдера (endpoint Callback Service) [callback.md](http
 * payments - транзакции по счетам
 * payment_outbox - таблица для outbox pattern
 
+**БД Callback Service**
+
+![callback_db.png](img/callback_db.png)
+
+Описание таблиц:
+* callback_outbox - таблица для outbox pattern
+
 **БД Query Service (read-модель)**
 
 Денормализованное представление ориентированное на чтение в Elasticsearch
@@ -98,7 +105,7 @@ ProviderCallbackReceived [provider_callback_received.json](events/provider_callb
 
 В обеих записях первичный ключ payment_id, в этом месте с помощью outbox pattern реализуется атомарность смены статуса
    операции и запись эвента, который нужно отправить в кафку (либо оба записали, либо ни одного)
-* В Transaction Service стейт машина ожидает подтверждение по операции n duration (настройка) если не дожидается - 
+* В Transaction Service стейт машина ожидает подтверждение по операции n duration (настройка), запуская для этого джоб, если не дожидается - 
 в одной физической транзакции БД:
 1. меняет статус операции в таблице payments на error_timeout
 2. создает запись в payment_outbox записывая event PaymentResult(PaymentFailed) (формируем в нем PaymentResultId) в статусе new
@@ -107,7 +114,7 @@ ProviderCallbackReceived [provider_callback_received.json](events/provider_callb
 операции и запись эвента, который нужно отправить в кафку (либо оба записали, либо ни одного)
 * Callback Service принимает HTTP callback (через API Gateway) от внешнего провайдера, валидирует подпись, дедуплицирует и сохраняет в CallbackDb событие ProviderCallbackReceived в Outbox
 * Callback Service с помощью polling вычитывает записи из payment_outbox в статусе new и отправляет в Apache Kafka
-* В Transaction Service получает event ProviderCallbackReceived и в одной физической транзакции БД:
+* В Transaction Service получает event ProviderCallbackReceived и проверяет не был ли ранее payment_id завершен по таймауту, если уже был завершен, то отправляем на ручной разбор, если нет, то в одной физической транзакции БД:
 1. меняет статус операции в таблице payments на Completed
 2. создает запись в payment_outbox записывая PaymentResult(PaymentCompleted) (формируем в нем PaymentResultId) в статусе new
 
