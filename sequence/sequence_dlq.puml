@@ -1,0 +1,44 @@
+@startuml
+
+participant "Kafka Broker" as Kafka
+participant "Wallet Service" as Wallet
+participant "Wallet DB" as WalletDb
+participant "payments.transactional.dlq" as DLQ
+participant "S3" as S3
+participant "Support" as Support
+participant "DLQ Service" as DLQService
+
+Kafka -> Wallet: PaymentResult
+
+alt Попытка #1
+    Wallet -> Wallet: Ошибка маппинга
+    Wallet -> Wallet: Увеличиваем счетчик попыток
+    Wallet -> Kafka: Commit offset = NO
+end
+
+alt Попытка #2
+    Kafka -> Wallet: Повторное чтение PaymentResult
+    Wallet -> Wallet: Ошибка маппинга
+    Wallet -> Wallet: Увеличиваем счетчик попыток
+    Wallet -> Kafka: Commit offset = NO
+end
+
+alt Попытка #3 (Количество попыток закончилось)
+    Kafka -> Wallet: Повторное чтение PaymentResult
+    Wallet -> Wallet: Количество попыток закончилось
+    Wallet -> DLQ: Отправляем сообщение в DLQ
+    Wallet -> Kafka: Commit offset = YES
+    DLQ -> S3: Сохраняем в S3
+end
+
+Support -> S3: Ручной разбор
+Support -> DLQService: Действие после ручного разбора\n(fix / ignore)
+
+alt Разбор ошибки и перезапуск сообщения (если нужно)
+    DLQService -> S3: Формируем сообщение
+    DLQService -> Wallet: PaymentResult
+    Wallet -> WalletDb: SUCCESS/FAILED status
+    WalletDb --> Wallet: OK
+end
+
+@enduml

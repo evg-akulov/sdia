@@ -3,41 +3,41 @@
 ## 1. C4 Container + Component диаграммы
 
 ### C4 Container
-[container.puml](c4/container.puml)
+[container.puml](../c4/container.puml)
 
 ### C4 Component 
 **внутренние компоненты ключевых сервисов**
 
-Wallet Service [wallet_service.puml](c4/wallet_service.puml)
+Wallet Service [wallet_service.puml](../c4/wallet_service.puml)
 
-Transaction Service [transaction_service.puml](c4/transaction_service.puml)
+Transaction Service [transaction_service.puml](../c4/transaction_service.puml)
 
-Query Service [query_service.puml](c4/query_service.puml)
+Query Service [query_service.puml](../c4/query_service.puml)
 
 ## 2. Диаграммы последовательности
 Основной успешный сценарий
-[sequence_success.puml](sequence/sequence_success.puml)
+[sequence_success.puml](../sequence/sequence_success.puml)
 
 Сценарий с ошибкой
-[sequence_error.puml](sequence/sequence_error.puml)
+[sequence_error.puml](../sequence/sequence_error.puml)
 
 Отдельная диаграмма для flow с callback-service
-[sequence_callback.puml](sequence/sequence_callback.puml)
+[sequence_callback.puml](../sequence/sequence_callback.puml)
 
 ## 3. Описание API контрактов
 
 **Внешние API**
 
-Создание платежа [payment.md](http/payment.md)
+Создание платежа [payment.md](../http/payment.md)
 
-callback API провайдера (endpoint Callback Service) [callback.md](http/callback.md)
+callback API провайдера (endpoint Callback Service) [callback.md](../http/callback.md)
 
-Запрос статуса платежа (endpoint Query Service) [query.md](http/query.md)
+Запрос статуса платежа (endpoint Query Service) [query.md](../http/query.md)
 
 
 ## 4. Описание сущностей (ERD-диаграмма)
 **БД Wallet Service**
-![wallet_db_erd.png](img/wallet_db_erd.png)        
+![wallet_db_erd.png](../img/wallet_db_erd.png)        
 
 Описание таблиц:
 * wallets - счета с остатками
@@ -48,7 +48,7 @@ callback API провайдера (endpoint Callback Service) [callback.md](http
 **Redis** хранит paymentId + PaymentResultId для целей дедупликации PaymentResult (с настроенным persistence)
 
 **БД Transaction Service**
-![transaction_db.png](img/transaction_db.png)
+![transaction_db.png](../img/transaction_db.png)
 
 Описание таблиц:
 * payments - транзакции по счетам
@@ -56,7 +56,7 @@ callback API провайдера (endpoint Callback Service) [callback.md](http
 
 **БД Callback Service**
 
-![callback_db.png](img/callback_db.png)
+![callback_db.png](../img/callback_db.png)
 
 Описание таблиц:
 * callback_outbox - таблица для outbox pattern
@@ -65,19 +65,19 @@ callback API провайдера (endpoint Callback Service) [callback.md](http
 
 Денормализованное представление ориентированное на чтение в Elasticsearch
 
-![query_db.png](img/query_db.png)
+![query_db.png](../img/query_db.png)
 
 ## 5. Описание сообщений для брокера Apache Kafka
 
 Форматы событий: 
 
-PaymentInitiated [payment_initiated.json](events/payment_initiated.json)
+PaymentInitiated [payment_initiated.json](../events/payment_initiated.json)
 
-PaymentResult PaymentCompleted [payment_result_completed.json](events/payment_result_completed.json)
+PaymentResult PaymentCompleted [payment_result_completed.json](../events/payment_result_completed.json)
 
-PaymentResult PaymentFailed [payment_result_failed.json](events/payment_result_failed.json)
+PaymentResult PaymentFailed [payment_result_failed.json](../events/payment_result_failed.json)
 
-ProviderCallbackReceived [provider_callback_received.json](events/provider_callback_received.json)
+ProviderCallbackReceived [provider_callback_received.json](../events/provider_callback_received.json)
 
 ## 6. Описание процесса исполнения платежа
 

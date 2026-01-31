@@ -1,0 +1,44 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+Person(person, "Person", "Клиент банка, мобильный/веб")
+
+Boundary(internal, "Payments system") {
+Container(api_gateway, "API Gateway", "Nginx", "Единая точка входа для НТТР-запросов, аутентификация, маршрутизация")
+Container(wallet, "Wallet Service", "Spring Boot app", "Управление балансами кошельков, резервирование средств и финальное списание/компенсация.")
+Container(transaction, "Transaction Service", "Spring Boot app", "Оркестрация платежа,стэйт машина и интеграция с внешним платёжным провайдером")
+Container(callback, "Callback Service", "Spring Boot app", "Принимает callback от провайдера")
+Container(query, "CQRS Query Service", "Spring Boot app", "Сервис чтения данных о платежах")
+
+ContainerDb(transactionDb, "Transaction DB + Outbox", "PostgreSQL Состояние платежей, outbox-события PaymentResult")
+ContainerDb(walletDb, "Wallet DB + Outbox", "PostgreSQL Счета пользователей, платежи и outbox-события Paymentinitiated")
+ContainerDb(walletCache, "Wallet Cache", "Redis")
+ContainerDb(queryDb, "readingDB", "Elasticsearch", "Информация о платежах")
+ContainerDb(queryRedis, "reading Cache", "Redis", "Информация о платежах (Cache)")
+SystemQueue(kafka, "Apache Kafka", "Асинхронный обмен событиями Paymentinitiated u PaymentResult между сервисами")
+
+Rel(api_gateway, query, "HTTP GET, запрос истории платежей, запрос статуса платежа")
+Rel(api_gateway, wallet, "HTTP POST, создать платеж")
+Rel(api_gateway, callback, "HTTP POST, callback от провайдера")
+Rel(kafka, transaction, "Kafka event [PaymentInitiated,ProviderCallbackReceived]")
+Rel(kafka, wallet, "Kafka event [PaymentResult]")
+Rel(kafka, query, "Kafka event [PaymentInitiated,PaymentResult]")
+
+Rel(wallet, walletDb, "Запись платежа и outbox-события Paymentinitiated")
+Rel(wallet, walletCache, "Чтение/Запись paymentId + PaymentResultId")
+Rel(walletDb, kafka, "Pub event [PaymentInitiated]")
+Rel(transaction, transactionDb, "Запись платежа и outbox-события PaymentResult")
+Rel(transactionDb, kafka, "Pub event [PaymentResult]")
+Rel(callback, kafka, "Pub event [ProviderCallbackReceived]")
+Rel(query, queryDb, "Чтение/Запись")
+Rel(query, queryRedis, "Чтение")
+
+}
+
+System_Ext(provider, "Provider System", "Внешний провайдер")
+
+Rel(person, api_gateway, "HTTP REST API, запрос истории платежей / отправка платежа")
+Rel(provider, api_gateway, "HTTPS Callback [Результат платежа]")
+Rel(transaction, provider, "HTTPS API внешний вызов")
+
+@enduml

@@ -1,0 +1,48 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+Boundary(internal, "Payments system") {
+Container(wallet, "Wallet Service", "Spring Boot app", "Управление балансами кошельков, резервирование средств и финальное списание/компенсация.")
+Container(transaction, "Transaction Service", "Spring Boot app", "Оркестрация платежа,стэйт машина и интеграция с внешним платёжным провайдером")
+Container(callback, "Callback Service", "Spring Boot app", "Принимает callback от провайдера")
+Container(query, "CQRS Query Service", "Spring Boot app", "Сервис чтения данных")
+Container(notify, "Notification Service", "Java/Spring", "Отправка уведомлений")
+
+SystemQueue(kafkaWallet, "Apache Kafka", "payments.wallet")
+SystemQueue(kafkaTransaction, "Apache Kafka", "payments.transactional")
+SystemQueue(kafkaCallback, "Apache Kafka", "payments.callback")
+SystemQueue(kafkaNotify, "Apache Kafka", "payments.notify")
+
+Container(kafkaCallbackDlq, "Kafka", "Event Broker", "payments.callback.dlq")
+Container(kafkaTransactionDlq, "Kafka", "Event Broker", "payments.transactional.dlq")
+Container(kafkaWalletDlq, "Kafka", "Event Broker", "payments.wallet.dlq")
+Container(kafkaNotifyDlq, "Kafka", "Event Broker", "payments.notify.dlq")
+Container(s3, "S3", "Invalid message")
+
+
+Rel(kafkaWallet, transaction, "Kafka event [PaymentInitiated]")
+Rel(kafkaTransaction, wallet, "Kafka event [PaymentResult]")
+Rel(kafkaWallet, query, "Kafka event [PaymentInitiated,PaymentResult]")
+
+Rel(wallet, kafkaWallet, "Pub event [PaymentInitiated]")
+Rel(transaction, kafkaTransaction, "Pub event [PaymentResult]")
+Rel(callback, kafkaCallback, "Pub event [ProviderCallbackReceived]")
+Rel(kafkaCallback, transaction, "Kafka event [ProviderCallbackReceived]")
+
+Rel(wallet, kafkaNotify, "Pub event", "push/sms")
+Rel(kafkaNotify, notify, "Kafka event", "push/sms")
+
+Rel(query, kafkaWalletDlq, "Kafka", "Pub error event PaymentInitiated")
+Rel(query, kafkaTransactionDlq, "Kafka", "Pub error event PaymentResult")
+Rel(wallet, kafkaTransactionDlq, "Kafka", "Pub error event PaymentResult")
+Rel(transaction, kafkaWalletDlq, "Kafka", "Pub error event PaymentInitiated")
+Rel(transaction, kafkaCallbackDlq, "Kafka", "Pub error event ProviderCallbackReceived")
+Rel(notify, kafkaNotifyDlq, "Kafka", "Pub error event push/sms")
+
+Rel(kafkaCallbackDlq, s3, "Kafka event")
+Rel(kafkaTransactionDlq, s3, "Kafka event")
+Rel(kafkaWalletDlq, s3, "Kafka event")
+
+}
+
+@enduml

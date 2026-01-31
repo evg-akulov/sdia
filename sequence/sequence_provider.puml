@@ -1,0 +1,60 @@
+@startuml
+
+actor User
+
+participant "API Gateway" as APIGW
+participant "Wallet Service" as Wallet
+participant "Wallet DB" as WalletDb
+participant "Kafka Broker" as Kafka
+participant "payments.transactional.dlq" as DLQ
+participant "Transactional DB" as TransactionalDb
+participant "Transactional Service" as Transactional
+participant "Resilience HTTP Client\n(Retry + CB)" as Resilience
+participant "External Payment Provider" as ExtProvider
+
+== Инициация платежа ==
+
+User -> APIGW: POST (создать платёж)
+APIGW -> Wallet: Запрос на платеж (сумма, получатель)
+
+Wallet -> WalletDb: Дедупликация, если такой транзакции не было то продолжаем
+Wallet -> WalletDb: Проверить баланс, если позволяет то продолжаем
+Wallet -> WalletDb: Списать сумму в wallets (резерв средств)
+Wallet -> WalletDb: Сохранить транзакцию в wallet_transactions (status=PENDING)
+Wallet -> WalletDb: Записать событие\n"PaymentInitiated" в Outbox
+Wallet --> WalletDb: commit (локальная транзакция)
+
+Wallet -> Kafka: публикует событие PaymentInitiated\n(через Outbox + polling)
+
+Kafka -> Transactional: доставить событие PaymentInitiated
+Transactional -> TransactionalDb: Дедупликация по paymentId
+Transactional -> TransactionalDb: Сохранить платеж (status=NEW)
+
+== Вызов провайдера ==
+
+loop retry (max=3, exp backoff + jitter)
+    Transactional -> Resilience: Вызвать API провайдера
+    Resilience -> ExtProvider: списание средств
+    Resilience --> Transactional: timeout
+end
+
+== Все попытки исчерпаны ==
+
+Resilience --> Transactional: failure
+Transactional -> Transactional: Circuit Breaker -> OPEN
+
+== Fallback==
+
+Transactional -> TransactionalDb: Обновить статус платежа (status=PENDING_PROVIDER)
+Transactional --> TransactionalDb: commit (локальная транзакция)
+Transactional -> DLQ: Отправляем сообщение в DLQ
+Transactional -> Kafka: публикует событие PaymentResult(PENDING_PROVIDER)
+
+Kafka -> Wallet: доставить событие PaymentResult(PENDING_PROVIDER)
+Wallet -> WalletDb: Обновить статус транзакции = PENDING_PROVIDER
+Wallet --> WalletDb: commit (локальная транзакция)
+
+Wallet --> APIGW: 202 Accepted
+APIGW --> User: Payment is processing
+
+@enduml
