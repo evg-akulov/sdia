@@ -24,6 +24,9 @@ Wallet -> WalletDb: Сохранить транзакцию в wallet_transactio
 Wallet -> WalletDb: Записать событие\n"PaymentInitiated" в Outbox
 Wallet --> WalletDb: commit (локальная транзакция)
 
+Wallet --> APIGW: 202 Accepted
+APIGW --> User: 202 Accepted
+
 Wallet -> Kafka: публикует событие PaymentInitiated\n(через Outbox + polling)
 
 Kafka -> Transactional: доставить событие PaymentInitiated
@@ -47,14 +50,10 @@ Transactional -> Transactional: Circuit Breaker -> OPEN
 
 Transactional -> TransactionalDb: Обновить статус платежа (status=PENDING_PROVIDER)
 Transactional --> TransactionalDb: commit (локальная транзакция)
-Transactional -> DLQ: Отправляем сообщение в DLQ
 Transactional -> Kafka: публикует событие PaymentResult(PENDING_PROVIDER)
 
 Kafka -> Wallet: доставить событие PaymentResult(PENDING_PROVIDER)
 Wallet -> WalletDb: Обновить статус транзакции = PENDING_PROVIDER
 Wallet --> WalletDb: commit (локальная транзакция)
-
-Wallet --> APIGW: 202 Accepted
-APIGW --> User: Payment is processing
 
 @enduml

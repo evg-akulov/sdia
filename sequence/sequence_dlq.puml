@@ -2,7 +2,7 @@
 
 participant "Kafka Broker" as Kafka
 participant "Wallet Service" as Wallet
-participant "Wallet DB" as WalletDb
+participant "Transaction DB" as TransactionDb
 participant "payments.transactional.dlq" as DLQ
 participant "S3" as S3
 participant "Support" as Support
@@ -12,20 +12,20 @@ Kafka -> Wallet: PaymentResult
 
 alt Попытка #1
     Wallet -> Wallet: Ошибка маппинга
-    Wallet -> Wallet: Увеличиваем счетчик попыток
+    Kafka -> TransactionDb: Увеличиваем счетчик попыток
     Wallet -> Kafka: Commit offset = NO
 end
 
 alt Попытка #2
     Kafka -> Wallet: Повторное чтение PaymentResult
     Wallet -> Wallet: Ошибка маппинга
-    Wallet -> Wallet: Увеличиваем счетчик попыток
+    Kafka -> TransactionDb: Увеличиваем счетчик попыток
     Wallet -> Kafka: Commit offset = NO
 end
 
 alt Попытка #3 (Количество попыток закончилось)
     Kafka -> Wallet: Повторное чтение PaymentResult
-    Wallet -> Wallet: Количество попыток закончилось
+    Kafka -> TransactionDb: Количество попыток закончилось
     Wallet -> DLQ: Отправляем сообщение в DLQ
     Wallet -> Kafka: Commit offset = YES
     DLQ -> S3: Сохраняем в S3

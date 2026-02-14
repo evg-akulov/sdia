@@ -22,7 +22,8 @@ Container(s3, "S3", "Invalid message")
 
 Rel(kafkaWallet, transaction, "Kafka event [PaymentInitiated]")
 Rel(kafkaTransaction, wallet, "Kafka event [PaymentResult]")
-Rel(kafkaWallet, query, "Kafka event [PaymentInitiated,PaymentResult]")
+Rel(kafkaTransaction, query, "Kafka event [PaymentResult]")
+Rel(kafkaWallet, query, "Kafka event [PaymentInitiated]")
 
 Rel(wallet, kafkaWallet, "Pub event [PaymentInitiated]")
 Rel(transaction, kafkaTransaction, "Pub event [PaymentResult]")

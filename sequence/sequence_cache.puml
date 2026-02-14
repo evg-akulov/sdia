@@ -25,9 +25,10 @@ alt CACHE MISS
 User -> APIGW: GET (получить данные по платёжу)
 APIGW -> Query: Запрос на получение данных по платежу
 
+Query -> QueryRedis: получить данные по платёжу (miss)
 Query -> QueryDb: получить данные по платёжу
-QueryDb --> QueryRedis: Payment details
-QueryRedis --> Query: Payment details
+QueryDb --> Query: Payment details
+Query --> QueryRedis: Payment details
 Query -> APIGW: Payment details
 APIGW -> User: Payment details
 end
