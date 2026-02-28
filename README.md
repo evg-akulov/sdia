@@ -18,4 +18,25 @@
 
 ---
 
+* [C4 Container-диаграмма AuthN/AuthZ](c4/container_security.puml)
+* [Sequence-диаграмма_OIDC Authorization Code Flow](sequence/sequence_OIDC_flow.puml)
+* [security-auth.md](description/security-auth.md)
+* [C4 Container-диаграмма_Webhook security](c4/container_webhook_security.puml)
+* [Sequence-диаграмма_Webhook validation + anti-replay + idempotency](sequence/sequence_webhook_validation.puml)
+* [webhooks-security.md](description/webhooks-security.md)
+* [C4 Container-диаграмма_Vault + injection](c4/container_vault.puml)
+* [Sequence-диаграмма_Vault agent + rotation](sequence/sequence_vault.puml)
+* [secrets-management.md](description/secrets-management.md)
+* [C4 Container-диаграмма_CI/CD + Argo Rollouts + Gateway](c4/container_cicd_argo_rollouts.puml)
+* [Sequence-диаграмма_canary/blue-green rollout + rollback](sequence/sequence_canaryrollout.puml)
+* [пример .gitlab-ci.yml (с этапами)](config/.gitlab-ci.yml)
+* [пример Rollout YAML (canary)](config/rollout.yaml)
+* [deployment-strategy.md](description/deployment-strategy.md)
+* [C4 Container-диаграмма_feature toggle migration](c4/container_db_migration_feature_toggle.puml)
+* [Sequence-диаграмма_expand/contract migration](sequence/sequence_db_migration_expand.puml)
+* [db-migration-feature-toggle.md](description/db-migration-feature-toggle.md)
+* [release-checklist.md](description/release-checklist.md)
+* [runbook.md](description/runbook.md)
+---
+
 Курс system design in action, @2025

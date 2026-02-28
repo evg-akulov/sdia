@@ -1,0 +1,43 @@
+@startuml
+title Canary / Blue-Green pipeline → rollout → weights → promote / rollback
+
+participant Dev
+participant "GitLab CI" as CI
+participant Registry
+participant "Git (manifests)" as Git
+participant ArgoCD
+participant "Argo Rollouts" as Rollouts
+participant "API Gateway / Ingress" as Ingress
+participant Kubernetes
+participant "Prometheus / Grafana" as Metrics
+
+== Build & publish ==
+Dev -> CI: push / merge
+CI -> CI: tests + security scans
+CI -> Registry: push image tx-service:v2
+CI -> Git: update Rollout manifest (image=v2)
+
+== Sync to cluster ==
+Git -> ArgoCD: new commit detected
+ArgoCD -> Kubernetes: apply manifests
+Kubernetes -> Rollouts: reconcile Rollout
+
+== Canary steps ==
+Rollouts -> Kubernetes: create canary ReplicaSet (v2)
+Rollouts -> Ingress: set traffic weight 10% to canary
+Rollouts -> Metrics: check error rate / latency SLI
+
+alt metrics are bad
+    Rollouts -> Ingress: set traffic weight 0% to canary (abort)
+    Rollouts -> Kubernetes: scale down canary
+    note right of Rollouts
+      rollback / abort finished
+    end note
+else metrics are good
+    Rollouts -> Ingress: set traffic weight 50%
+    Rollouts -> Metrics: re-check metrics
+    Rollouts -> Ingress: set traffic weight 100% (promote)
+    Rollouts -> Kubernetes: scale down old ReplicaSet (v1) after delay
+end
+
+@enduml

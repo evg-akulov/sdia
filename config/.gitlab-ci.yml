@@ -1,0 +1,99 @@
+stages:
+  - deploy
+
+variables:
+  NAMESPACE: "default"
+  RELEASE: "my-payment-service"
+  CHART: "$HELM_REPO/payment-service-chart"
+  CANARY_IMAGE: "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
+  STEPS: "10,25,50,75,100"
+  HEALTH_PATH: "/actuator/health"
+  PROM_URL: "$PROM_URL"            # e.g. https://prom.example/api/v1/query
+  PROM_QUERY: 'sum(rate(http_server_requests_seconds_count{job="payment-service",status!~"5..",pod=~"'"$RELEASE"-canary.*"}[2m]))'
+  ERROR_RATE_QUERY: 'sum(rate(http_server_requests_seconds_count{job="payment-service",status=~"5..",pod=~"'"$RELEASE"-canary.*"}[2m])) / sum(rate(http_server_requests_seconds_count{job="payment-service",pod=~"'"$RELEASE"-canary.*"}[2m]))'
+
+canary_rollout:
+  stage: deploy
+  image: alpine:3.18
+  before_script:
+    - apk add --no-cache curl jq bash python3 py3-pip
+    - pip3 install yq
+    - mkdir -p ~/.kube
+    - echo "$KUBECONFIG" > ~/.kube/config
+    - helm repo add myrepo "$HELM_REPO" || true
+    - helm repo update
+  script:
+    - |
+      set -euo pipefail
+
+      # helpers
+      kubectl_wait_ready() {
+        local label="$1"
+        kubectl -n "$NAMESPACE" wait --for=condition=Ready pod -l "$label" --timeout=120s
+      }
+
+      check_http_health() {
+        local svc_fqdn="$1"
+        for i in 1 2 3; do
+          code=$(curl -s -o /dev/null -w "%{http_code}" "http://$svc_fqdn$HEALTH_PATH" || echo 000)
+          if [ "$code" = "200" ]; then return 0; fi
+          sleep 5
+        done
+        return 1
+      }
+
+      prom_query() {
+        local q="$1"
+        curl -sG --data-urlencode "query=$q" "$PROM_URL" | jq -r '.data.result[0].value[1] // "0"'
+      }
+
+      TOTAL_REPLICAS=${TOTAL_REPLICAS:-2}
+      IFS=',' read -r -a PCTS <<< "$STEPS"
+
+      for pct in "${PCTS[@]}"; do
+        canary_replicas=$(( (TOTAL_REPLICAS * pct + 99) / 100 ))
+        if [ "$canary_replicas" -lt 1 ]; then canary_replicas=1; fi
+        stable_replicas=$(( TOTAL_REPLICAS - canary_replicas ))
+        if [ "$stable_replicas" -lt 0 ]; then stable_replicas=0; fi
+
+        echo "Applying step $pct% -> canary=$canary_replicas stable=$stable_replicas"
+
+        helm upgrade --install "$RELEASE" "$CHART" -n "$NAMESPACE" \
+          --set image.tag="$CI_COMMIT_SHORT_SHA" \
+          --set canary.enabled=true \
+          --set canary.replicas="$canary_replicas" \
+          --set stable.replicas="$stable_replicas" \
+          --wait --timeout 5m
+
+        # wait for canary pods ready
+        kubectl_wait_ready "app=$RELEASE,role=canary"
+
+        # HTTP health against canary loadbalancer/service
+        CANARY_SVC="${RELEASE}-canary.${NAMESPACE}.svc.cluster.local:8080"
+        if ! check_http_health "$CANARY_SVC"; then
+          echo "HTTP health failed at $pct%, rolling back"
+          helm rollback "$RELEASE" 0 -n "$NAMESPACE" || true
+          exit 1
+        fi
+
+        # Prometheus error-rate check (expect < 1%)
+        err=$(prom_query "$ERROR_RATE_QUERY")
+        err_pct=$(awk "BEGIN{print ($err*100)}")
+        echo "Canary error rate: $err_pct%"
+        thresh=1.0
+        cmp=$(awk "BEGIN{print ($err_pct < $thresh)}")
+        if [ "$cmp" -ne 1 ]; then
+          echo "Error rate $err_pct% >= $thresh%, rolling back"
+          helm rollback "$RELEASE" 0 -n "$NAMESPACE" || true
+          exit 1
+        fi
+
+        echo "Step $pct% OK; sleeping 30s for metrics to stabilize"
+        sleep 30
+      done
+
+      echo "Canary complete"
+  when: manual
+  environment:
+    name: production
+    url: https://my-java-app.example.com

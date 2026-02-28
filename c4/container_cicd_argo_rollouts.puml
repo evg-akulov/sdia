@@ -1,0 +1,36 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+Person(dev, "Developer")
+
+System_Boundary(ci, "CI/CD & Delivery") {
+
+  Container(gitlab, "GitLab CI", "CI/CD", "Build, test, image publish")
+
+  Container(registry, "Container Registry", "Docker Registry", "Хранение образов")
+
+  Container(gitops, "GitOps Repo", "Git", "K8s manifests + Rollout.yaml")
+
+  Container(argocd, "Argo CD", "GitOps Controller", "Sync manifests → cluster")
+
+  Container(rollouts, "Argo Rollouts", "K8s Controller", "Canary / Blue-Green стратегия")
+}
+
+System_Boundary(k8s, "Kubernetes Cluster") {
+
+  Container(gateway, "API Gateway / Ingress", "NGINX / Istio",  "Traffic splitting stable/canary")
+  Container(service, "Wallet Service", "Java / Spring", "Application Pods")
+
+  Container(prom, "Prometheus", "Metrics", "SLO / error rate / latency")
+}
+
+Rel(dev, gitlab, "Push / Tag")
+Rel(gitlab, registry, "Build & push image")
+Rel(gitlab, gitops, "Update rollout.yaml (image tag)")
+Rel(gitops, argocd, "GitOps sync")
+Rel(argocd, rollouts, "Apply Rollout CRD")
+Rel(rollouts, gateway, "Update traffic weights")
+Rel(gateway, service, "HTTP traffic")
+Rel(rollouts, prom, "Query metrics")
+
+@enduml

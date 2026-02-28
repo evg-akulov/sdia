@@ -1,0 +1,30 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+title Vault integration: Vault Agent sidecar + Kubernetes Auth
+
+System_Boundary(k8s, "Kubernetes Cluster") {
+
+    Container(vaultAgent, "Vault Agent (Sidecar)", "vault-agent",  "Читает serviceAccount JWT\nЛогинится в Vault через Kubernetes Auth\nРендерит секреты в файл / env")
+    Container(wallet, "Wallet Service", "Spring Boot app",   "Читает секреты из файла / env\n(12-factor configuration)")
+    Container(query, "CQRS Query Service", "Spring Boot app",  "Читает секреты из файла / env\n(12-factor configuration)")
+    Container(callback, "Callback Service", "Spring Boot app",  "Читает секреты из файла / env\n(12-factor configuration)")
+    ContainerDb(walletDb, "Wallet DB", "PostgreSQL", "Счета/остатки")
+    ContainerDb(queryDb, "readingDB", "Elasticsearch", "История платежей")
+    ContainerDb(callbackDb, "Callback DB", "PostgreSQL", "Статусы callback")
+    Container_Ext(vault, "HashiCorp Vault", "Secrets Manager",   "Kubernetes Auth\nKV secrets\nDynamic credentials\nAudit log")
+    Container_Ext(k8sApi, "Kubernetes API", "Control Plane",   "TokenReview API\nВалидация serviceAccount JWT")
+}
+
+Rel(vaultAgent, vault, "Kubernetes Auth login\n+ read secrets", "HTTPS")
+Rel(vault, k8sApi, "TokenReview(jwt)", "HTTPS")
+
+Rel(vaultAgent, wallet, "Inject secrets\n(file / shared volume / env)", "local")
+Rel(vaultAgent, query, "Inject secrets\n(file / shared volume / env)", "local")
+Rel(vaultAgent, callback, "Inject secrets\n(file / shared volume / env)", "local")
+
+Rel(wallet, walletDb, "Read / Write", "JDBC")
+Rel(query, queryDb, "Read / Write", "JDBC")
+Rel(callback, callbackDb, "Read / Write", "JDBC")
+
+@enduml

@@ -1,0 +1,34 @@
+@startuml
+
+participant DB_Migrator as DB_Migrator
+database Wallet_DB as DB
+participant Feature_Flags as FF
+participant Wallets_Service as WS
+
+== Expand (добавляем новое) ==
+DB_Migrator -> DB : ADD COLUMN status_reason NULL
+DB --> DB_Migrator : OK
+
+== Флаг выключен: работает старый путь ==
+WS -> FF : get status_reason
+FF --> WS : false
+WS -> DB : write status
+DB --> WS : OK
+
+== Dual write (подготовка данных) ==
+WS -> FF : get status_reason
+FF --> WS : false (но включен dual write)
+WS -> DB : write status + write status_reason
+DB --> WS : OK
+
+== Switch read (включаем флаг) ==
+WS -> FF : get status_reason
+FF --> WS : true
+WS -> DB : write status + write status_reason
+DB --> WS : OK
+
+== Contract (удаляем старое после окна совместимости) ==
+DB_Migrator -> DB : DROP old column(status) after all pods updated
+DB --> DB_Migrator : OK
+
+@enduml

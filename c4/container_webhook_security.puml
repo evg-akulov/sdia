@@ -1,0 +1,48 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+Person(person, "Person", "Клиент")
+
+Boundary(internal, "Bank Platform") {
+  Container(apiGw, "Api Gateway", "Nginx", "Проверка подписи webHook (HMAC), проверка  timestamp, rate limit, маршрутизация")
+  Container(idP, "Identity Provider", "Keycloak", "Логин пользователя, выдача authorization code и токенов")
+  Container(wallet, "Wallet Service", "Spring Boot app", "OAuth2 Resource Server \n  Validates User JWT and Service JWT \n списание/пополнение")
+  Container(transaction, "Transaction Service", "Spring Boot app", "Оркестрация платежа,стэйт машина и интеграция с внешним платёжным провайдером")
+  Container(callback, "Callback Service", "Spring Boot app", "OAuth2 Resource Server \n  Validates Service JWT \n Обработка callback")
+  Container(query, "CQRS Query Service", "Spring Boot app", "OAuth2 Resource Server \n Validates User JWT \n + получение информации по платежам")
+
+  ContainerDb(walletDb, "Wallet DB + Outbox", "PostgreSQL Счета пользователей, платежи и outbox-события Paymentinitiated")
+  ContainerDb(transactionDb, "Transaction DB + Outbox", "PostgreSQL Состояние платежей, outbox-события PaymentResult")
+  ContainerDb(callbackDb, "Callback DB + Outbox", "PostgreSQL", "Статус платежей и outbox-события")
+  ContainerDb(queryDb, "readingDB", "Elasticsearch", "Информация о платежах")
+  ContainerDb(queryRedis, "reading Cache", "Redis", "Информация о платежах (Cache)")
+
+  Container(kafka, "Kafka", "Event Broker", "Асинхронный обмен событиями между сервисами")
+}
+
+
+System_Ext(extPayment, "External Payment Provider")
+
+Rel(person, apiGw, "HTTPS")
+Rel(apiGw, wallet, "Проксирование API вызовов + Authorisation: Bearer <JWT>", "HTTPS")
+Rel(apiGw, query, "Проксирование API вызовов + Authorisation: Bearer <JWT>", "HTTPS")
+Rel(apiGw, idP, "OIDC Authorization Code Flow", "HTTPS")
+Rel(wallet, walletDb, "JDBC", "Запись платежа, резерва и событие в outbox")
+Rel(wallet, walletDb, "JDBC", "При успехе: подтверждение списания. При неудаче: отмена(компенсация)")
+Rel(walletDb, kafka, "Outbox", "Публикует событие PaymentInitiated")
+Rel(kafka, transaction, "Kafka event", "PaymentInitiated")
+Rel(kafka, wallet, "Kafka event", "PaymentResult")
+Rel(transaction, extPayment, "HTTPS", "HTTPS API внешний вызов")
+Rel(kafka, transaction, "Kafka event", "ProviderCallbackReceived")
+Rel(extPayment, apiGw, "HTTPS", "POST /provider/callback\nbody={paymentId,status,eventId}\nX-Timestamp\nX-Signature=hmac(ts+'.'+body)")
+Rel(apiGw, callback, "Проксирование API вызовов + Authorisation: Bearer <JWT>", "HTTPS")
+Rel(kafka, query, "Kafka event", "PaymentInitiated")
+Rel(kafka, query, "Kafka event", "PaymentResult")
+Rel(callback, callbackDb, "Kafka", "Обновление статуса платежа")
+Rel(callbackDb, kafka, "Outbox", "ProviderCallbackReceived")
+Rel(query, queryRedis, "Чтение", "Информация о платеже")
+Rel(query, queryDb, "Чтение/Запись", "Информация о платеже")
+Rel(transaction, transactionDb, "JDBC", "Обновление статуса платежа, запись, события PaymentResult в Outbox")
+Rel(transactionDb, kafka, "Event Broker", "PaymentResult")
+
+@enduml

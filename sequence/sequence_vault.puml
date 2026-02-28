@@ -1,0 +1,49 @@
+@startuml
+title Vault Agent: Kubernetes Auth + secret rotation (TTL)
+
+participant "Vault Agent\n(sidecar)" as VA
+participant "HashiCorp Vault" as VAULT
+participant "Kubernetes API\n(TokenReview)" as K8S
+participant "Wallet Service" as WALLET
+participant "CQRS Query Service" as QUERY
+participant "Callback Service" as CALLBACK
+
+== Старт pod ==
+
+VA -> VA: read serviceAccount JWT\n(/var/run/secrets/kubernetes.io)
+VA -> VAULT: POST /auth/kubernetes/login\n{ role, jwt }
+
+VAULT -> K8S: TokenReview(jwt)
+K8S --> VAULT: token valid\n+ serviceAccount claims
+
+VAULT --> VA: Vault token (TTL, policies)
+
+== Получение секрета ==
+
+VA -> VAULT: read secret\n/payment/provider_api_key
+VAULT --> VA: provider_api_key (version v1)
+
+VA -> WALLET: render secret\n(file / env)
+VA -> QUERY: render secret\n(file / env)
+VA -> CALLBACK: render secret\n(file / env)
+
+WALLET -> WALLET: load config\n(12-factor)
+QUERY -> QUERY: load config\n(12-factor)
+CALLBACK -> CALLBACK: load config\n(12-factor)
+
+== Ротация / обновление ==
+
+... TTL истёк или версия секрета обновлена ...
+
+VA -> VAULT: renew token\nor re-read secret
+VAULT --> VA: provider_api_key (version v2)
+
+VA -> WALLET: overwrite secret\n(file / env)
+VA -> QUERY: overwrite secret\n(file / env)
+VA -> CALLBACK: overwrite secret\n(file / env)
+
+WALLET -> WALLET: hot reload\nor apply on restart
+QUERY -> QUERY: hot reload\nor apply on restart
+CALLBACK -> CALLBACK: hot reload\nor apply on restart
+
+@enduml

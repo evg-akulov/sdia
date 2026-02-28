@@ -1,0 +1,67 @@
+@startuml
+title Webhook: проверка подписи, timestamp, anti-replay, идемпотентность
+
+participant "External Payment Provider" as PP
+participant "Api Gateway" as GW
+database "Callback DB" as CDB
+participant "Callback Service" as CS
+participant "Kafka Broker" as Kafka
+participant "Transaction Service" as TS
+database "Transaction DB" as DB
+
+PP -> GW: POST /provider/callback\nbody={paymentId,status,eventId}\nX-Timestamp\nX-Signature=hmac(ts+'.'+body)
+
+== Проверка подписи и timestamp ==
+
+GW -> GW: Проверить X-Timestamp\n(<= 5 минут)
+
+alt timestamp слишком старый
+    GW --> PP: 400 / 401\nReject (stale timestamp)
+    return
+end
+
+GW -> GW: expected_hmac =\nHMAC(secret, ts+'.'+body)
+
+alt подпись не совпала
+    GW --> PP: 401 Unauthorized
+    return
+end
+
+
+GW -> GW: verify(signature, current)
+alt invalid
+  GW -> GW: verify(signature, previous)
+end
+
+== Защита от replay ==
+GW -> CDB: GET eventId
+
+alt eventId уже встречался
+    GW --> PP: 200 OK (duplicate ignored)\nили 409 Conflict
+    return
+else новый eventId
+    GW -> CDB: SET eventId=1\nTTL=10m
+end
+
+== Проброс во внутренний контур ==
+GW -> CS: Forward callback (validated)
+
+CS -> Kafka: notifyProviderResult(paymentId, status, eventId)
+CS --> GW: 200 OK
+GW --> PP: 200 OK
+Kafka -> TS: notifyProviderResult(paymentId, status, eventId)
+
+== Идемпотентность на уровне Transaction Service ==
+TS -> DB: BEGIN
+TS -> DB: SELECT processed_callback\nWHERE eventId=?\nOR (paymentId+status)
+
+alt уже обработан
+    TS -> DB: ROLLBACK
+else новый
+    TS -> DB: UPDATE payments SET status=...
+    TS -> DB: INSERT processed_callback(eventId)
+    TS -> DB: COMMIT
+end
+
+
+@enduml

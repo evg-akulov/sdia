@@ -1,0 +1,63 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: payment-service
+spec:
+  replicas: 6
+  revisionHistoryLimit: 3
+
+  selector:
+    matchLabels:
+      app: payment-service
+
+  template:
+    metadata:
+      labels:
+        app: payment-service
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: app
+          image: registry.gitlab.com/payments/payment-service:1.2.3
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 20"]
+
+  strategy:
+    canary:
+      canaryService: payment-service-canary
+      stableService: payment-service
+      trafficRouting:
+        nginx:
+          stableIngress: payment-ingress
+
+      steps:
+        - setWeight: 10
+        - pause: { duration: 2m }
+
+        - setWeight: 50
+        - pause: { duration: 5m }
+
+        - analysis:
+            templates:
+              - templateName: payment-error-rate
+            args:
+              - name: service
+                value: payment-service
+
+        - setWeight: 100

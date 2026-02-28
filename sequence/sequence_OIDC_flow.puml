@@ -1,0 +1,55 @@
+@startuml
+
+actor User
+participant "Mobile" as Client
+participant "API Gateway\n(OIDC client)" as GW
+participant "Identity Provider\n(Keycloak)" as IdP
+participant "Wallet Service" as Wallet
+participant "CQRS Query Service" as Query
+
+== Неаутентифицированный запрос ==
+
+User -> Client : Открыть приложение
+Client -> GW : GET /app\n(без токена)
+
+GW -> GW : Нет токена
+GW -> Client : 302 Redirect to IdP\n/auth?client_id=...\n&redirect_uri=...
+
+== Логин на стороне IdP ==
+
+Client -> IdP : GET /auth ...
+IdP -> Client : Форма логина
+Client -> IdP : Логин / пароль
+
+IdP -> Client : 302 Redirect\nredirect_uri?code=AUTH_CODE
+
+== Обмен code на tokens ==
+
+Client -> GW : GET /callback?code=AUTH_CODE
+GW -> IdP : POST /token\n(code + client_secret)
+IdP --> GW : id_token,\naccess_token,\nrefresh_token
+
+GW -> GW : Вернуть access_token
+GW -> Client : 302 /200 + access_token
+
+== Доступ к API ==
+
+Client -> GW : POST /wallets/reserve\n(Authorization: Bearer access_token)
+
+GW -> GW : Валидация JWT\n(signature / exp / aud / iss)
+
+GW -> Wallet : POST /reserve\nAuthorization: Bearer <JWT>
+Wallet -> Wallet : Валидация JWT\n(signature / exp / aud / iss)\n+ авторизация по roles/scopes
+Wallet --> GW : 200 OK
+GW --> Client : 200 OK
+
+Client -> GW : POST /payment-query/history\n(Authorization: Bearer access_token)
+
+GW -> GW : Валидация JWT\n(signature / exp / aud / iss)
+
+GW -> Query : POST /history\nAuthorization: Bearer <JWT>
+Query -> Query : Валидация JWT\n(signature / exp / aud / iss)\n+ авторизация по roles/scopes
+Query --> GW : 200 OK
+GW --> Client : 200 OK
+
+@enduml

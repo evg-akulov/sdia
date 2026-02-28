@@ -1,0 +1,19 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+Boundary(system, "Bank Platform") {
+
+  Container(api, "Wallet Service", "Java / Spring", "Работа со статусами платежей\nfeature-toggle aware")
+
+  Container(flag, "Feature Flag Service", "Unleash / ConfigCat","Включение чтения/записи нового поля")
+
+  Container(migrator, "DB Migrator", "Liquibase", "Expand / Contract миграции")
+
+  ContainerDb(db, "Wallet DB", "PostgreSQL",  "payments(status, status_reason)")
+}
+
+Rel(api, flag, "Check flag: read_new / write_new")
+Rel(migrator, db, "DDL / backfill")
+Rel(api, db, "JDBC")
+
+@enduml
